@@ -1,21 +1,26 @@
 '''
 Interface for Bluetooth devices using dbus
 
-@author: rob
+@author: SeelfesteR
 '''
 
 import dbus
+from axel import Event
 
 bus = dbus.SystemBus()
 
 manager_obj = bus.get_object('org.bluez', '/')
 manager = dbus.Interface(manager_obj, 'org.bluez.Manager')
 
+
 class DbusProperty(object):
     '''
     Special property descriptor to handle dbus properties. Retrieves and sets
     the property by property name. Allows an option to set the property to 
     read-only.
+    
+    It is required that classes using this property descriptor have an interface
+    attribute containing the dbus interface.
     '''
 
     def __init__(self, name, read_only=False):
@@ -34,17 +39,38 @@ class DbusProperty(object):
         instance.interface.SetProperty(self.name, value)
 
 
-class Device(object):
+class DbusObjectWrapper(object):
+    '''
+    Generic wrapper for Dbus objects.
+    '''
+    
+    def __init__(self, bus_name, object_path, dbus_interface):
+        '''
+        Initialize the interface to the wrapped dbus object.
+        '''
+        obj = bus.get_object(bus_name, object_path)
+        self.interface = dbus.Interface(obj, dbus_interface)
+
+    def __getattr__(self, name):
+        '''
+        For unknown attributes try to relay to dbus methods.
+        '''
+        return getattr(self.interface, name)
+    
+
+
+class Device(DbusObjectWrapper):
     '''
     Wrapper for a bluetooth device connected to the bluetooth adapter.
     '''
     
-    def __init__(self, hci_object_path):
+    def __init__(self, object_path):
         '''
         Initialize for the bt device at the given object path.
         '''
-        obj = bus.get_object('org.bluez', hci_object_path)
-        self.interface = dbus.Interface(obj, 'org.bluez.Device')
+        super(Device, self).__init__('org.bluez', 
+                                     object_path, 
+                                     'org.bluez.Device')
     
     address = DbusProperty('Address', read_only=True)
     name = DbusProperty('Name', read_only=True)
@@ -65,17 +91,22 @@ class Device(object):
 
     
     
-class Adapter(object):
+class Adapter(DbusObjectWrapper):
     '''
     Wrapper for a bluetooth adapter.
     '''
     
-    def __init__(self, hci_object_path):
+    def __init__(self, object_path):
         '''
         Initialize for the hci device at the given object path.
         '''
-        obj = bus.get_object('org.bluez', hci_object_path)
-        self.interface = dbus.Interface(obj, 'org.bluez.Adapter')
+        super(Adapter, self).__init__('org.bluez', 
+                                      object_path, 
+                                      'org.bluez.Adapter')
+        self.interface.connect_to_signal('DeviceFound', self.__device_found)
+        self.interface.connect_to_signal('DeviceDisappeared', self.__device_disappeared)
+        self.interface.connect_to_signal('DeviceCreated', self.__device_created)
+        self.interface.connect_to_signal('DeviceRemoved', self.__device_removed)
         
     address = DbusProperty('Address', read_only=True)
     name = DbusProperty('Name', read_only=False)
@@ -87,6 +118,11 @@ class Adapter(object):
     discoverable_timeout = DbusProperty('DiscoverableTimeout', read_only=False)
     discovering = DbusProperty('Discovering', read_only=True)
     uuids = DbusProperty('UUIDs', read_only=True)
+
+    device_found = Event()
+    device_disappeared = Event()
+    device_created = Event()
+    device_removed = Event()
     
     def get_devices(self):
         '''
@@ -94,6 +130,19 @@ class Adapter(object):
         '''
         return get_objects_from_property(Device, self.interface, 'Devices')
     
+    def __device_found(self, address, values):
+        print("device_found")
+        dev = Device(address)
+        self.device_found(dev, values)
+        
+    def __device_disappeared(self, address):
+        pass
+    
+    def __device_created(self, device):
+        pass
+    
+    def __device_removed(self, device):
+        pass
 
 def get_adapters():
     '''
