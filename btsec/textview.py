@@ -8,9 +8,15 @@ import pygtk
 pygtk.require('2.0')
 import gtk
 
+from btsec.gtkconsole import GtkInterpreter
+
 class Terminal(object):
     
     def __init__(self):
+        self.interpreter = GtkInterpreter()
+        self.interpreter.out.output_received += self.interpreter_out
+        self.interpreter.start()
+
         self.window = gtk.Window(gtk.WINDOW_TOPLEVEL)
         self.window.set_title("Terminal")
         self.window.connect("destroy", lambda w: gtk.main_quit())
@@ -35,15 +41,21 @@ class Terminal(object):
         
         self.window.set_default_size(500, 200)
         self.window.show()
+
         
     def entry_activate(self, entry, data=None):
-        end = self.output_buffer.get_end_iter()
-        self.output_buffer.insert(end, entry.get_text() + "\n")
+        
+        self.interpreter.feed(entry.get_text())
+        
+        #end = self.output_buffer.get_end_iter()
+        #self.output_buffer.insert(end, entry.get_text() + "\n")
         entry.set_text("")
         
-def main():
-    gtk.main()
-    
+    def interpreter_out(self, data):
+        end = self.output_buffer.get_end_iter()
+        self.output_buffer.insert(end, data)
+        
+        
+        
 if __name__ == "__main__":
-    Terminal()
-    main()
+    t = Terminal()
