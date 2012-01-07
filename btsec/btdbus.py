@@ -6,7 +6,9 @@ Interface for Bluetooth devices using dbus
 
 import dbus
 from axel import Event
+from dbus.mainloop.glib import DBusGMainLoop
 
+DBusGMainLoop(set_as_default=True)
 bus = dbus.SystemBus()
 
 manager_obj = bus.get_object('org.bluez', '/')
@@ -131,9 +133,8 @@ class Adapter(DbusObjectWrapper):
         return get_objects_from_property(Device, self.interface, 'Devices')
     
     def __device_found(self, address, values):
-        print("device_found")
-        dev = Device(address)
-        self.device_found(dev, values)
+        print("device_found: %s (%s)" % (address, values))
+        self.device_found(address, values)
         
     def __device_disappeared(self, address):
         pass
