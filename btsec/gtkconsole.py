@@ -11,7 +11,6 @@ if sys.version[0] == '2':
     pygtk.require("2.0")
 import gtk
 
-import copy
 from axel import Event
 
 
@@ -134,6 +133,92 @@ class GtkInterpreter (threading.Thread):
         self._kill=1
         self.ready.release()
         self.join()
+
+class CodeLine(object):
+    """
+    Object containing code to run.
+    """
+    def __init__(self, code):
+        # Code to run
+        self.code = code
+        
+        # First line in the command
+        self.first = self
+        
+        # Is this line complete? None means unknown
+        self._incomplete = None
+        
+        # Has this line been run?
+        self._finished = False
+        
+        # Error that has occurred while compiling. None if no errors.
+        self._compile_error = None
+        
+        # Error that has occurred while running. None if no errors.
+        self._exec_error = None
+        
+        # Next line of code
+        self.next = None
+    
+    @property
+    def incomplete(self):
+        """
+        Is this set of lines complete?
+        """
+        return self.first._incomplete
+    
+    @incomplete.setter
+    def incomplete(self, value):
+        self.first._incomplete = value
+    
+    @property
+    def finished(self):
+        """
+        Has this set of lines run to completion?
+        """
+        
+    def add_last(self, line):
+        last = self
+        while last.next:
+            last = last.next
+        last.next = line
+        line.first = self.first
+        
+    def __iter__(self):
+        return CodeLineIter(self.first)
+    
+    def __add__(self, other):
+        self.add_last(other)
+        return self
+    
+    def __iadd__(self, other):
+        self.add_last(other)
+        return self
+    
+    def get_full_command(self):
+        cmd = ""
+        for line in self:
+            cmd += line.code
+        
+        return cmd
+
+class CodeLineIter(object):
+    """
+    Special iterator to iterate over a set of code lines.
+    """
+    def __init__(self, line):
+        self.line = line
+    
+    def next(self):
+        return self.__next__()
+    
+    def __next__(self):
+        if not self.line:
+            raise StopIteration
+        res = self.line
+        self.line = self.line.next
+        return res
+
 
 class OutputCatcher(object):
     
