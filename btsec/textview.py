@@ -16,6 +16,8 @@ class Terminal(object):
         self.interpreter = GtkInterpreter()
         self.interpreter.out.output_received += self.interpreter_out
         self.interpreter.start()
+        self.interpreter.command_created += self.command_created
+        self.interpreter.command_updated += self.command_created
 
         self.window = gtk.Window(gtk.WINDOW_TOPLEVEL)
         self.window.set_title("Terminal")
@@ -55,7 +57,9 @@ class Terminal(object):
         end = self.output_buffer.get_end_iter()
         self.output_buffer.insert(end, data)
         
-        
+    def command_created(self, command):
+        end = self.output_buffer.get_end_iter()
+        self.output_buffer.insert(end, command.code)
         
 if __name__ == "__main__":
     t = Terminal()

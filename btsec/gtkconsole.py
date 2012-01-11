@@ -71,13 +71,19 @@ class GtkInterpreter (threading.Thread):
     """
     TIMEOUT = 100 # Millisecond interval between timeouts.
     
+    # Event triggered when a new command is created.
+    command_created = Event()
+    
+    # Event triggered when an existing command has changed.
+    command_updated = Event()
+    
     def __init__ (self):
         threading.Thread.__init__ (self)
         self.ready = threading.Condition ()
         self.globs = globals ()
         self.locs = locals ()
         self._kill = 0
-        self.cmd = ''       # Current code block
+        self.cmd = None       # Current code block
         self.new_cmds = []  # List of commands not yet added to the code
         
         self.out = OutputCatcher()
@@ -100,17 +106,34 @@ class GtkInterpreter (threading.Thread):
         if self._kill: gtk.main_quit ()
         if len(self.new_cmds) > 0:  
             self.ready.notify ()  
-            self.cmd = self.cmd + self.new_cmds[0]
+            
+            print(self.new_cmds[0])
+            
+            if self.cmd:
+                self.cmd += self.new_cmds[0]
+                self.command_updated(self.cmd)
+            else:
+                self.cmd = Command(self.new_cmds[0])
+                self.command_created(self.cmd)
+            
             del self.new_cmds[0]
             try:
-                code = codeop.compile_command (self.cmd[:-1]) 
+                code = codeop.compile_command (self.cmd.code[:-1]) 
                 if code: 
-                    self.cmd = ''
                     exec (code, self.globs, self.locs)
                     self.completer.update (self.locs)
-            except Exception:
+                    
+                    self.cmd.finished = True
+                    self.command_updated(self.cmd)
+                    self.cmd = None
+                    
+            except Exception as ex:
                 traceback.print_exc ()
-                self.cmd = ''  
+                self.cmd.exec_error = ex
+                self.command_updated(self.cmd)
+                self.cmd = None  
+                
+                print("exec error")
                                     
         self.ready.release()
         return 1 
@@ -140,64 +163,19 @@ class Command(object):
     """
     def __init__(self, code):
         # Code to run
-        self._code = code
+        self.code = code
         
         # Has this line been run?
-        self._finished = False
+        self.finished = False
         
         # Error that has occurred while compiling. None if no errors.
-        self._compile_error = None
+        self.compile_error = None
         
         # Error that has occurred while running. None if no errors.
-        self._exec_error = None
+        self.exec_error = None
 
-        # Event triggered when contained code has changed.
-        self.code_changed = Event(self)
-    
-        # Event triggered when the status of this command has changed.
-        self.status_changed = Event(self)
-        
-    @property
-    def code(self):
-        """
-        Code for this command.
-        """
-        return self._code
-    
-    @code.setter
-    def code(self, value):
-        self._code = value
-        self.code_changed()
-        
-    @property
-    def finished(self):
-        return self._finished
-    
-    @finished.setter
-    def finished(self, value):
-        self._finished = value
-        self.status_changed()
-        
-    @property
-    def compile_error(self):
-        return self._compile_error
-    
-    @compile_error.setter
-    def compile_error(self, value):
-        self._compile_error = value
-        self.status_changed()
-    
-    @property
-    def exec_error(self):
-        return self._exec_error
-    
-    @exec_error.setter
-    def exec_error(self, value):
-        self._exec_error = value
-        self.status_changed()
-        
     def __iadd__(self, other):
-        self.code = self._code + other
+        self.code = self.code + other
     
 
 class OutputCatcher(object):
