@@ -134,19 +134,13 @@ class GtkInterpreter (threading.Thread):
         self.ready.release()
         self.join()
 
-class CodeLine(object):
+class Command(object):
     """
     Object containing code to run.
     """
     def __init__(self, code):
         # Code to run
-        self.code = code
-        
-        # First line in the command
-        self.first = self
-        
-        # Is this line complete? None means unknown
-        self._incomplete = None
+        self._code = code
         
         # Has this line been run?
         self._finished = False
@@ -156,69 +150,55 @@ class CodeLine(object):
         
         # Error that has occurred while running. None if no errors.
         self._exec_error = None
+
+        # Event triggered when contained code has changed.
+        self.code_changed = Event(self)
+    
+        # Event triggered when the status of this command has changed.
+        self.status_changed = Event(self)
         
-        # Next line of code
-        self.next = None
-    
     @property
-    def incomplete(self):
+    def code(self):
         """
-        Is this set of lines complete?
+        Code for this command.
         """
-        return self.first._incomplete
+        return self._code
     
-    @incomplete.setter
-    def incomplete(self, value):
-        self.first._incomplete = value
-    
+    @code.setter
+    def code(self, value):
+        self._code = value
+        self.code_changed()
+        
     @property
     def finished(self):
-        """
-        Has this set of lines run to completion?
-        """
-        
-    def add_last(self, line):
-        last = self
-        while last.next:
-            last = last.next
-        last.next = line
-        line.first = self.first
-        
-    def __iter__(self):
-        return CodeLineIter(self.first)
+        return self._finished
     
-    def __add__(self, other):
-        self.add_last(other)
-        return self
+    @finished.setter
+    def finished(self, value):
+        self._finished = value
+        self.status_changed()
+        
+    @property
+    def compile_error(self):
+        return self._compile_error
     
+    @compile_error.setter
+    def compile_error(self, value):
+        self._compile_error = value
+        self.status_changed()
+    
+    @property
+    def exec_error(self):
+        return self._exec_error
+    
+    @exec_error.setter
+    def exec_error(self, value):
+        self._exec_error = value
+        self.status_changed()
+        
     def __iadd__(self, other):
-        self.add_last(other)
-        return self
+        self.code = self._code + other
     
-    def get_full_command(self):
-        cmd = ""
-        for line in self:
-            cmd += line.code
-        
-        return cmd
-
-class CodeLineIter(object):
-    """
-    Special iterator to iterate over a set of code lines.
-    """
-    def __init__(self, line):
-        self.line = line
-    
-    def next(self):
-        return self.__next__()
-    
-    def __next__(self):
-        if not self.line:
-            raise StopIteration
-        res = self.line
-        self.line = self.line.next
-        return res
-
 
 class OutputCatcher(object):
     
