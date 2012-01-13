@@ -66,7 +66,7 @@ class Completer:
 class GtkInterpreter (threading.Thread):
     """Run a gtk main() in a separate thread.
     Python commands can be passed to the thread where they will be executed.
-    This is implemented by periodically checking for passed code using a
+    This is implemented by periodically checking for passed command using a
     GTK timeout callback.
     """
     TIMEOUT = 100 # Millisecond interval between timeouts.
@@ -83,8 +83,8 @@ class GtkInterpreter (threading.Thread):
         self.globs = globals ()
         self.locs = locals ()
         self._kill = 0
-        self.cmd = None       # Current code block
-        self.new_cmds = []  # List of commands not yet added to the code
+        self.cmd = None       # Current command block
+        self.new_cmds = []  # List of commands not yet added to the command
         
         self.out = OutputCatcher()
         sys.stdout = self.out
@@ -101,47 +101,57 @@ class GtkInterpreter (threading.Thread):
         gtk.main ()
 
     def code_exec (self):
-        """Execute waiting code.  Called every timeout period."""
+        """Execute waiting command.  Called every timeout period."""
         self.ready.acquire ()
         if self._kill: gtk.main_quit ()
         if len(self.new_cmds) > 0:  
             self.ready.notify ()  
             
-            print(self.new_cmds[0])
-            
             if self.cmd:
                 self.cmd += self.new_cmds[0]
-                self.command_updated(self.cmd)
+                #self.command_updated(self.cmd)
             else:
                 self.cmd = Command(self.new_cmds[0])
                 self.command_created(self.cmd)
             
             del self.new_cmds[0]
+            
+            code = None
             try:
-                code = codeop.compile_command (self.cmd.code[:-1]) 
-                if code: 
-                    exec (code, self.globs, self.locs)
-                    self.completer.update (self.locs)
-                    
-                    self.cmd.finished = True
-                    self.command_updated(self.cmd)
-                    self.cmd = None
-                    
-            except Exception as ex:
-                traceback.print_exc ()
-                self.cmd.exec_error = ex
-                self.command_updated(self.cmd)
-                self.cmd = None  
+                code = codeop.compile_command (self.cmd.command[:-1])
                 
-                print("exec error")
-                                    
+                try:
+                    if code: 
+                        exec (code, self.globs, self.locs)
+                        self.completer.update (self.locs)
+                        
+                        self.cmd.finished = True
+                        self.command_updated(self.cmd)
+                        self.cmd = None
+                    else:
+                        self.cmd.finished = False
+                        self.command_updated(self.cmd)
+                        
+                except Exception as ex:
+                    #traceback.print_exc ()
+                    self.cmd.exec_error = ex
+                    self.command_updated(self.cmd)
+                    self.cmd = None  
+            
+            except Exception as ex:
+                #traceback.print_exc ()
+                self.cmd.compile_error = ex
+                self.command_updated(self.cmd)
+                self.cmd = None
+
+                
         self.ready.release()
         return 1 
             
     def feed (self, code):
-        """Feed a line of code to the thread.
-        This function will block until the code checked by the GTK thread.
-        Return true if executed the code.
+        """Feed a line of command to the thread.
+        This function will block until the command checked by the GTK thread.
+        Return true if executed the command.
         Returns false if deferring execution until complete block available.
         """
         if (not code) or (code[-1]<>'\n'): code = code +'\n' # raw_input strips newline
@@ -159,11 +169,11 @@ class GtkInterpreter (threading.Thread):
 
 class Command(object):
     """
-    Object containing code to run.
+    Object containing command to run.
     """
     def __init__(self, code):
         # Code to run
-        self.code = code
+        self.command = code
         
         # Has this line been run?
         self.finished = False
@@ -175,7 +185,8 @@ class Command(object):
         self.exec_error = None
 
     def __iadd__(self, other):
-        self.code = self.code + other
+        self.command = self.command + other
+        return self
     
 
 class OutputCatcher(object):
